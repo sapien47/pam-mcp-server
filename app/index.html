@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SAP Support Radar</title>
+<meta name="robots" content="noindex,nofollow">
 <style>
 :root{--bg:#f5f6f7;--card:#fff;--text:#1d2d3e;--muted:#556b82;--line:#e5e9ee;--brand:#0070f2;--brand-weak:#ebf5fe;
 --crit:#aa0808;--crit-bg:#ffeaf4;--high:#e76500;--high-bg:#fff3e0;--med:#c69200;--med-bg:#fff8d6;--low:#256f3a;--low-bg:#f5fae5;--unk:#5b738b;--unk-bg:#eff1f2;--shadow:0 0 .125rem rgba(34,53,72,.15),0 .125rem .5rem rgba(34,53,72,.08)}
@@ -332,7 +333,20 @@ function renderUnmatched(miss){const el=$("#unmatched");
   el.querySelectorAll(".miss").forEach(d=>{const m=miss[d.dataset.i];d.querySelectorAll("button[data-pv]").forEach(b=>b.onclick=()=>{addMine(b.dataset.pv,m.s);d.remove();renderMine()});d.querySelector("[data-skip]").onclick=()=>d.remove()})}
 $("#demo").onclick=()=>{$("#paste").value="ECC6 ehp8\nNW 7.40\nbw4hana 2021\nSolman 7.2\nBOBJ 4.3\nS4 2023\nHANA DB 2.0\nASE 16.0.4\nECC 7";$("#match").click()};
 $("#clear").onclick=()=>{mine=[];$("#unmatched").innerHTML="";store.set("pam-mine",mine);renderMine()};
+// Data bundled with the deployment (app/data, see scripts/publish-data.js) is loaded automatically,
+// unless this browser already holds the same or a newer export. Without it, users upload a CSV themselves.
+async function loadBundled(){
+  try{
+    const r=await fetch("data/pam-meta.json",{cache:"no-store"});if(!r.ok)return;
+    const b=await r.json();if(!b.current)return;
+    const csv=async f=>parseCsv(await (await fetch("data/"+f,{cache:"no-store"})).text());
+    const stale=!DATA||!META||!META.date||META.date<b.current.date||(META.bundled&&META.date!==b.current.date);
+    if(stale)load(await csv("pam.csv"),{...b.current,bundled:true});
+    if(!PREV&&b.previous){setPrev(await csv("pam-previous.csv"),{...b.previous,bundled:true});show(store.get("pam-view")||"dash")}
+  }catch(e){/* no bundled data: the upload screen stays */}
+}
 const saved=store.get("pam-data");if(saved&&saved.length)load(saved);else show("dash");
+loadBundled();
 </script>
 </body>
 </html>

@@ -8,7 +8,8 @@
     "start": "node src/server.js",
     "inspect": "npx @modelcontextprotocol/inspector node src/server.js",
     "test": "node scripts/insights-test.js && node scripts/match-test.js && node scripts/smoke-test.js",
-    "add-to-claude-desktop": "node scripts/add-to-claude-desktop.js"
+    "add-to-claude-desktop": "node scripts/add-to-claude-desktop.js",
+    "publish-data": "node scripts/publish-data.js"
   },
   "keywords": [
     "sap",

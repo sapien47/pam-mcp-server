@@ -104,6 +104,18 @@ cf push
 
 `manifest.yml` uses the static-file buildpack with 64 MB memory. The page stores the uploaded data in the visitor's own browser only.
 
+**Bundle the data for colleagues without an S-user (internal use):** whoever has an S-user exports PAM once a month and runs:
+
+```bash
+npm run publish-data -- "C:\path\to\extractPAM.csv"
+cd app
+cf push
+```
+
+Visitors then see the data immediately, without uploading anything. The previous bundled export is kept, so *What changed* shows the month-to-month differences. A banner shows the export date and asks for a newer export after 30 days. `app/data/` is git-ignored, so the data goes to your BTP app, never to GitHub.
+
+> ⚠ A Cloud Foundry route is reachable by anyone who has the link. Bundled PAM data comes from behind an S-user login, so protect the app (e.g. approuter + XSUAA) before sharing it beyond a proof of concept, and check that sharing PAM content fits your SAP agreement. The page asks search engines not to index it, but that is not access control.
+
 ## MCP server
 
 Requires Node.js 18 or newer.
