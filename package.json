@@ -1,0 +1,27 @@
+{
+  "name": "pam-mcp-server",
+  "version": "0.1.0",
+  "description": "MCP server that lets an AI assistant check SAP product support dates from a local SAP Product Availability Matrix (PAM) export",
+  "main": "src/server.js",
+  "scripts": {
+    "convert": "node scripts/convert.js",
+    "start": "node src/server.js",
+    "inspect": "npx @modelcontextprotocol/inspector node src/server.js",
+    "test": "node scripts/smoke-test.js"
+  },
+  "keywords": [
+    "sap",
+    "pam",
+    "mcp",
+    "maintenance"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "zod": "^4.6.5"
+  },
+  "bin": {
+    "pam-mcp-server": "src/server.js"
+  }
+}

@@ -1,0 +1,5 @@
+node_modules/
+# PAM data comes from behind an S-user login: never commit it
+data/
+*.csv
+*.xlsx
