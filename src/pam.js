@@ -4,6 +4,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import "../app/matcher.js";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const DATA_FILE = process.env.PAM_DATA_FILE || path.join(projectRoot, "data", "pam.json");
@@ -43,9 +44,6 @@ function normalize(s) {
 }
 function compact(s) {
   return normalize(s).replace(/[ .]/g, "");
-}
-function tokens(s) {
-  return normalize(s).split(" ").filter(Boolean);
 }
 
 // Plain-language risk assessment for one product version, relative to today.
@@ -102,49 +100,21 @@ function matchesFilters(p, { category, status }) {
   return true;
 }
 
-// Scores how well a free-text name (e.g. "ECC 6.0 EHP8") matches a product version.
-function score(query, p) {
-  const q = compact(query);
-  const names = [p.productVersion, p.officialName];
-  if (names.some((n) => compact(n) === q)) return 100;
-  const qTokens = tokens(query);
-  if (!qTokens.length) return 0;
-  const target = tokens(`${p.productVersion} ${p.officialName} ${p.product}`);
-  const hits = qTokens.filter((t) => target.includes(t)).length;
-  let s = (hits / qTokens.length) * 80;
-  if (names.some((n) => compact(n).includes(q))) s = Math.max(s, 70);
-  // Tie-breaker: prefer product versions without extra words ("BW/4HANA 2021" over "BPC 2021, FOR BW/4HANA").
-  const pvTokens = tokens(p.productVersion).filter((t) => t !== "SAP");
-  const covered = pvTokens.filter((t) => qTokens.includes(t)).length;
-  s += pvTokens.length ? (covered / pvTokens.length) * 19 : 0;
-  return Math.min(99, Math.round(s));
-}
-
-// Common landscape shorthand → PAM wording. Kept small and explicit, so matches stay explainable.
-const ALIASES = [
-  [/\bECC\b/g, "ERP"],
-  [/\bEHP\s?(\d)\b/g, "EHP$1"],
-  [/\bNW\b/g, "NETWEAVER"],
-  [/\bSOLMAN\b/g, "SOLUTION MANAGER"],
-  [/\bBOBJ\b|\bBO\b/g, "SBOP BI PLATFORM"],
-  [/\bS4\b|\bS 4\b/g, "S/4HANA"],
-];
-function expandAliases(q) {
-  let out = normalize(q);
-  for (const [re, rep] of ALIASES) out = out.replace(re, rep);
-  return out;
+// Free-text matching lives in app/matcher.js, shared with the web app so both behave the same.
+// It expects {pv, name, product}; the index keeps a reference back to the full record.
+let index = null;
+function rank(query, n = 8, min = 35) {
+  const { products } = loadData();
+  index ??= products.map((p) => ({ pv: p.productVersion, name: p.officialName, product: p.product, ref: p }));
+  return globalThis.PamMatcher.match(query, index, n, min).map((x) => ({ p: x.p.ref, s: x.p._c.includes(compact(query)) ? 100 : x.s }));
 }
 
 export function search({ query, category, status, limit = 20 }) {
   const { products } = loadData();
   let results = products.filter((p) => matchesFilters(p, { category, status }));
   if (query) {
-    const q = expandAliases(query);
-    results = results
-      .map((p) => ({ p, s: Math.max(score(query, p), score(q, p)) }))
-      .filter((x) => x.s >= 50)
-      .sort((a, b) => b.s - a.s)
-      .map((x) => x.p);
+    const allowed = new Set(results);
+    results = rank(query, 500, 50).map((x) => x.p).filter((p) => allowed.has(p));
   }
   return { total: results.length, results: results.slice(0, limit).map((p) => toSummary(p)) };
 }
@@ -174,22 +144,20 @@ export function expiring({ months = 12, category, includeAlreadyEnded = false, l
 }
 
 export function checkLandscape({ systems, warnMonths = 12 }) {
-  const { products } = loadData();
   const rows = systems.map((name) => {
-    const q = expandAliases(name);
-    // An exact hit only via an alias ("BO 4.3" -> "SBOP BI PLATFORM 4.3") counts as a strong fuzzy match, not exact.
-    const ranked = products
-      .map((p) => ({ p, s: Math.max(score(name, p), Math.min(99, score(q, p))) }))
-      .filter((x) => x.s >= 50)
-      .sort((a, b) => b.s - a.s);
-    if (!ranked.length) {
-      return { input: name, match: "none", risk: "unknown", explanation: "No matching product version found in PAM." };
+    const ranked = rank(name, 4);
+    const tie = ranked[1] && ranked[1].s === ranked[0].s;
+    if (!ranked.length || ranked[0].s < globalThis.PamMatcher.CONFIDENT || tie) {
+      return {
+        input: name, match: "none", risk: "unknown",
+        explanation: "No confident match in PAM. Ask the user which product version is meant.",
+        didYouMean: ranked.length ? ranked.map((x) => x.p.productVersion) : undefined,
+      };
     }
     const best = ranked[0];
-    const tied = ranked.filter((x) => x.s === best.s);
     return {
       input: name,
-      match: best.s === 100 ? "exact" : tied.length > 1 ? "ambiguous" : "fuzzy",
+      match: best.s === 100 ? "exact" : "fuzzy",
       matchScore: best.s,
       ...toSummary(best.p, warnMonths),
       alternatives: best.s < 100 ? ranked.slice(1, 4).map((x) => x.p.productVersion) : undefined,

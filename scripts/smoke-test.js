@@ -31,7 +31,7 @@ console.log(`pam_expiring 6 months -> ${exp.total} product versions, first: ${ex
 
 // Fictional landscape for demos
 const check = await call("pam_check_landscape", {
-  systems: ["ECC 6.0 EHP8", "SAP NetWeaver 7.4", "BW/4HANA 2021", "SolMan 7.2", "BO 4.3", "S/4HANA 2023", "Some Legacy Tool"],
+  systems: ["netweaver", "ECC6 ehp8", "NW 7.40", "bw4hana 2021", "Solman 7.2", "BOBJ 4.3", "S4 2023", "ECC6 ehp2", "ECC 7", "Some Legacy Tool"],
 });
 console.log("\npam_check_landscape:", JSON.stringify(check.riskCounts));
 for (const r of check.systems) {

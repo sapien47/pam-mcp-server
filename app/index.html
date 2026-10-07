@@ -56,6 +56,8 @@ a{color:var(--brand)}
 .chip{display:inline-flex;align-items:center;gap:6px;background:var(--brand-weak);border-radius:14px;padding:3px 10px;margin:3px}
 .chip button{border:0;background:none;color:var(--muted);cursor:pointer;font-size:16px;line-height:1}
 .hidden{display:none!important}
+.miss{margin-top:10px;padding:8px 10px;border-radius:8px;background:var(--high-bg);line-height:2}
+.btn.sm{padding:2px 8px;font-size:12px}.btn.ghost{border-color:transparent;background:none;color:var(--muted)}
 .pager{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:10px}
 footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
 </style>
@@ -111,8 +113,8 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
         <div class="sugg" id="sugg"></div>
         <div id="chips" style="margin-top:10px"></div></div>
       <div class="card"><h2>Or paste a system list</h2>
-        <textarea id="paste" rows="4" style="width:100%" placeholder="One system per line, e.g.&#10;ECC 6.0 EHP8&#10;SAP NetWeaver 7.4&#10;BW/4HANA 2021"></textarea>
-        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" id="match">Match against PAM</button><button class="btn" id="demo">Load demo landscape</button><button class="btn" id="clear">Clear</button></div></div>
+        <textarea id="paste" rows="4" style="width:100%" placeholder="One system per line, written any way you like, e.g.&#10;ECC6 ehp8&#10;NW 7.40&#10;Solman 7.2"></textarea>
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" id="match">Match against PAM</button><button class="btn" id="demo">Load demo landscape</button><button class="btn" id="clear">Clear</button></div><div id="unmatched"></div></div>
     </div>
     <div class="kpis" id="mineKpis"></div>
     <div class="card"><div class="tablewrap"><table id="mineTbl"></table></div></div>
@@ -120,11 +122,12 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
 </main>
 <footer>Data: your own export of the SAP Product Availability Matrix. Always check the SAP Support Portal for the latest information. Not affiliated with SAP.</footer>
 
+<script src="matcher.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 const store = { get(k){ try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } }, set(k,v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
 const TODAY = new Date().toISOString().slice(0,10);
-let DATA = null, mine = store.get("pam-mine") || [], win = store.get("pam-win") ?? 6, sortKey = "eomm", sortAsc = true, page = 0;
+let DATA = null, mine = (store.get("pam-mine") || []).map(x => typeof x === "string" ? { pv: x } : x), win = store.get("pam-win") ?? 6, sortKey = "eomm", sortAsc = true, page = 0;
 const PAGE = 100;
 
 // ---------- CSV parsing (same logic as scripts/convert.js) ----------
@@ -149,14 +152,8 @@ function risk(p,w=12){
   if(p.eomm<=addMonths(TODAY,w)) return ["medium",`Ends in ${months(TODAY,p.eomm)} months`];
   return ["low",`${months(TODAY,p.eomm)} months left`];
 }
-const norm=s=>(s||"").toUpperCase().replace(/[^A-Z0-9.]+/g," ").trim(), compact=s=>norm(s).replace(/[ .]/g,""), toks=s=>norm(s).split(" ").filter(Boolean);
-const ALIAS=[[/\bECC\b/g,"ERP"],[/\bNW\b/g,"NETWEAVER"],[/\bSOLMAN\b/g,"SOLUTION MANAGER"],[/\bBOBJ\b|\bBO\b/g,"SBOP BI PLATFORM"],[/\bS4\b/g,"S/4HANA"]];
-const expand=q=>ALIAS.reduce((o,[re,r])=>o.replace(re,r),norm(q));
-function score(q,p){const c=compact(q);if(compact(p.pv)===c||compact(p.name)===c)return 100;const qt=toks(q);if(!qt.length)return 0;
-  const t=toks(p.pv+" "+p.name+" "+p.product);let s=qt.filter(x=>t.includes(x)).length/qt.length*80;
-  if(compact(p.pv).includes(c)||compact(p.name).includes(c))s=Math.max(s,70);
-  const pt=toks(p.pv).filter(x=>x!=="SAP");s+=pt.length?pt.filter(x=>qt.includes(x)).length/pt.length*19:0;return Math.min(99,Math.round(s))}
-function best(q,n=8){const e=expand(q);return DATA.map(p=>({p,s:Math.max(score(q,p),Math.min(99,score(e,p)))})).filter(x=>x.s>=50).sort((a,b)=>b.s-a.s).slice(0,n)}
+const norm=s=>(s||"").toUpperCase().replace(/[^A-Z0-9.]+/g," ").trim();
+const best=(q,n=8,min=35)=>PamMatcher.match(q,DATA,n,min);
 
 // ---------- rendering helpers ----------
 const fmt=d=>d?d.split("-").reverse().join("."):"";
@@ -193,7 +190,7 @@ function renderAll(){
   $("#win").querySelectorAll("button").forEach(b=>b.onclick=()=>{win=+b.dataset.m;store.set("pam-win",win);page=0;renderAll()});
   const q=$("#q").value.trim(),st=$("#fStatus").value,cat=$("#fCat").value,lim=win?addMonths(TODAY,win):null;
   let rows=DATA.filter(p=>(!st||p.status===st)&&(!cat||p.cat===cat));
-  if(q){const ids=new Set(best(q,500).map(x=>x.p));const plain=norm(q);rows=rows.filter(p=>ids.has(p)||norm(p.pv+" "+p.name+" "+p.line).includes(plain))}
+  if(q){const ids=new Set(best(q,500,50).map(x=>x.p));const plain=norm(q);rows=rows.filter(p=>ids.has(p)||norm(p.pv+" "+p.name+" "+p.line).includes(plain))}
   if(win) rows=rows.filter(p=>p.eomm&&p.eomm>=TODAY&&p.eomm<=lim).concat([]);
   const rk={critical:0,high:1,medium:2,unknown:3,low:4};
   rows.sort((a,b)=>{const va=sortKey==="risk"?rk[risk(a)[0]]:a[sortKey]||"￿",vb=sortKey==="risk"?rk[risk(b)[0]]:b[sortKey]||"￿";return (va<vb?-1:va>vb?1:0)*(sortAsc?1:-1)});
@@ -206,19 +203,19 @@ function renderAll(){
 }
 
 function renderMine(){
-  const items=mine.map(pv=>DATA.find(p=>p.pv===pv)).filter(Boolean);
+  const items=mine.map(m=>{const p=DATA.find(p=>p.pv===m.pv);return p&&{...p,from:m.from}}).filter(Boolean);
   $("#mineCount").textContent=`· ${items.length} products`;
   $("#chips").innerHTML=items.map(p=>`<span class="chip">${esc(p.pv)}<button data-pv="${esc(p.pv)}" title="Remove">×</button></span>`).join("");
-  $("#chips").querySelectorAll("button").forEach(b=>b.onclick=()=>{mine=mine.filter(x=>x!==b.dataset.pv);store.set("pam-mine",mine);renderMine()});
+  $("#chips").querySelectorAll("button").forEach(b=>b.onclick=()=>{mine=mine.filter(x=>x.pv!==b.dataset.pv);store.set("pam-mine",mine);renderMine()});
   const rk={critical:0,high:1,medium:2,unknown:3,low:4};
   items.sort((a,b)=>rk[risk(a)[0]]-rk[risk(b)[0]]||(a.eomm||"z").localeCompare(b.eomm||"z"));
   const c=countBy(items,p=>risk(p)[0]),get=k=>(c.find(x=>x[0]===k)||[,0])[1];
   $("#mineKpis").innerHTML=items.length?[["crit","critical","out of maintenance"],["high","high","mainstream ended"],["med","medium","ends within 12 months"],["","low","supported > 12 months"]].map(([cl,k,l])=>`<div class="card kpi ${cl}"><div class="v">${get(k)}</div><div class="l">${l}</div></div>`).join(""):"";
   $("#mineTbl").innerHTML=items.length?`<thead><tr><th>Risk</th><th>Product version</th><th>Status</th><th>End of mainstream</th><th>End of extended</th><th>What it means</th><th></th></tr></thead><tbody>`+
-    items.map(p=>{const [r,t]=risk(p);return `<tr class="${r==="critical"||r==="high"?"flag":""}"><td><span class="pill r-${r}">${r}</span></td><td><b>${esc(p.pv)}</b><br><span class="muted">${esc(p.name)}</span></td><td>${esc(p.status)}</td><td class="date">${fmt(p.eomm)}</td><td class="date">${fmt(p.eoem)}</td><td>${esc(t)}</td><td>${p.url?`<a href="${esc(p.url)}" target="_blank" rel="noopener">Portal ↗</a>`:""}</td></tr>`}).join("")+"</tbody>"
+    items.map(p=>{const [r,t]=risk(p);return `<tr class="${r==="critical"||r==="high"?"flag":""}"><td><span class="pill r-${r}">${r}</span></td><td><b>${esc(p.pv)}</b><br><span class="muted">${esc(p.name)}</span>${p.from&&p.from.toUpperCase()!==p.pv.toUpperCase()?`<br><span class="muted" style="font-size:12px">you typed: “${esc(p.from)}”</span>`:""}</td><td>${esc(p.status)}</td><td class="date">${fmt(p.eomm)}</td><td class="date">${fmt(p.eoem)}</td><td>${esc(t)}</td><td>${p.url?`<a href="${esc(p.url)}" target="_blank" rel="noopener">Portal ↗</a>`:""}</td></tr>`}).join("")+"</tbody>"
     :`<tbody><tr><td class="muted" style="text-align:center;padding:30px">No products yet. Search above, paste a list, or load the demo landscape.</td></tr></tbody>`;
 }
-function addMine(pv){if(!mine.includes(pv)){mine.push(pv);store.set("pam-mine",mine)}}
+function addMine(pv,from){if(!mine.some(m=>m.pv===pv)){mine.push({pv,from});store.set("pam-mine",mine)}}
 
 // ---------- wiring ----------
 function load(list){DATA=list;store.set("pam-data",list);
@@ -236,10 +233,14 @@ $("#fStatus").onchange=$("#fCat").onchange=()=>{page=0;renderAll()};
 $("#prev").onclick=()=>{page--;renderAll()};$("#next").onclick=()=>{page++;renderAll()};
 $("#addQ").oninput=()=>{const q=$("#addQ").value.trim();$("#sugg").innerHTML=q.length<2?"":best(q).map(x=>`<div data-pv="${esc(x.p.pv)}"><b>${esc(x.p.pv)}</b> <span class="muted">${esc(x.p.name)}</span></div>`).join("");
   $("#sugg").querySelectorAll("div").forEach(d=>d.onclick=()=>{addMine(d.dataset.pv);$("#addQ").value="";$("#sugg").innerHTML="";renderMine()})};
-$("#match").onclick=()=>{const miss=[];$("#paste").value.split(/\n|;|,/).map(s=>s.trim()).filter(Boolean).forEach(s=>{const b=best(s,1)[0];b?addMine(b.p.pv):miss.push(s)});
-  $("#paste").value=miss.join("\n");if(miss.length)alert("Not found in PAM (left in the box): "+miss.join(", "));renderMine()};
-$("#demo").onclick=()=>{$("#paste").value="ECC 6.0 EHP8\nSAP NetWeaver 7.4\nBW/4HANA 2021\nSolMan 7.2\nBO 4.3\nS/4HANA 2023\nSAP HANA Platform Edition 2.0";$("#match").click()};
-$("#clear").onclick=()=>{mine=[];store.set("pam-mine",mine);renderMine()};
+$("#match").onclick=()=>{const miss=[];
+  $("#paste").value.split(/\n|;/).map(s=>s.trim()).filter(Boolean).forEach(s=>{const r=PamMatcher.resolve(s,DATA);r.match?addMine(r.match.p.pv,s):miss.push({s,c:r.candidates})});
+  $("#paste").value="";renderUnmatched(miss);renderMine()};
+function renderUnmatched(miss){const el=$("#unmatched");
+  el.innerHTML=miss.map((m,i)=>`<div class="miss" data-i="${i}"><b>“${esc(m.s)}”</b> – ${m.c.length?"did you mean: "+m.c.map(x=>`<button class="btn sm" data-pv="${esc(x.p.pv)}">${esc(x.p.pv)}</button>`).join(" "):"<span class=muted>no match in PAM. Try a product name and version, e.g. “ECC 6 EHP7”.</span>"} <button class="btn sm ghost" data-skip title="Dismiss">✕</button></div>`).join("");
+  el.querySelectorAll(".miss").forEach(d=>{const m=miss[d.dataset.i];d.querySelectorAll("button[data-pv]").forEach(b=>b.onclick=()=>{addMine(b.dataset.pv,m.s);d.remove();renderMine()});d.querySelector("[data-skip]").onclick=()=>d.remove()})}
+$("#demo").onclick=()=>{$("#paste").value="ECC6 ehp8\nNW 7.40\nbw4hana 2021\nSolman 7.2\nBOBJ 4.3\nS4 2023\nHANA DB 2.0\nECC 7";$("#match").click()};
+$("#clear").onclick=()=>{mine=[];$("#unmatched").innerHTML="";store.set("pam-mine",mine);renderMine()};
 const saved=store.get("pam-data");if(saved&&saved.length)load(saved);else show("dash");
 </script>
 </body>
