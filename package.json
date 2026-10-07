@@ -1,7 +1,7 @@
 {
   "name": "pam-mcp-server",
   "version": "0.1.0",
-  "description": "MCP server that lets an AI assistant check SAP product support dates from a local SAP Product Availability Matrix (PAM) export",
+  "description": "SAP Support Radar: web app (SAP BTP) and MCP server to check SAP product support dates from your own SAP Product Availability Matrix (PAM) export",
   "main": "src/server.js",
   "scripts": {
     "convert": "node scripts/convert.js",
