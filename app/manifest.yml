@@ -1,0 +1,9 @@
+---
+applications:
+  - name: sap-support-radar
+    memory: 64M
+    disk_quota: 128M
+    instances: 1
+    random-route: true
+    buildpacks:
+      - staticfile_buildpack

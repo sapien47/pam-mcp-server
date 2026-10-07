@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SAP Support Radar</title>
+<style>
+:root{--bg:#f5f6f7;--card:#fff;--text:#1d2d3e;--muted:#556b82;--line:#e5e9ee;--brand:#0070f2;--brand-weak:#ebf5fe;
+--crit:#aa0808;--crit-bg:#ffeaf4;--high:#e76500;--high-bg:#fff3e0;--med:#c69200;--med-bg:#fff8d6;--low:#256f3a;--low-bg:#f5fae5;--unk:#5b738b;--unk-bg:#eff1f2;--shadow:0 0 .125rem rgba(34,53,72,.15),0 .125rem .5rem rgba(34,53,72,.08)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12171c;--card:#1d232a;--text:#eaecee;--muted:#a9b4be;--line:#2f3a45;--brand:#4db1ff;--brand-weak:#1a2c3d;--crit:#ff8888;--crit-bg:#3d1a1a;--high:#ffab5c;--high-bg:#3a2a16;--med:#f0c94a;--med-bg:#36301a;--low:#8fd19e;--low-bg:#1c3022;--unk:#a9b4be;--unk-bg:#262e36;--shadow:0 0 .125rem rgba(0,0,0,.5)}}
+:root[data-theme="dark"]{--bg:#12171c;--card:#1d232a;--text:#eaecee;--muted:#a9b4be;--line:#2f3a45;--brand:#4db1ff;--brand-weak:#1a2c3d;--crit:#ff8888;--crit-bg:#3d1a1a;--high:#ffab5c;--high-bg:#3a2a16;--med:#f0c94a;--med-bg:#36301a;--low:#8fd19e;--low-bg:#1c3022;--unk:#a9b4be;--unk-bg:#262e36}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 "72","Segoe UI",system-ui,-apple-system,sans-serif}
+header{background:var(--card);box-shadow:var(--shadow);position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:20px;padding:0 20px;height:52px}
+.logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:16px;white-space:nowrap}
+.logo svg{width:22px;height:22px;color:var(--brand)}
+nav{display:flex;gap:4px;height:100%;overflow-x:auto}
+nav button{border:0;background:none;color:var(--muted);font:inherit;font-weight:600;padding:0 12px;cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
+nav button.active{color:var(--brand);border-bottom-color:var(--brand)}
+.spacer{flex:1}
+.btn{border:1px solid var(--brand);background:var(--card);color:var(--brand);border-radius:8px;padding:6px 12px;font:inherit;font-weight:600;cursor:pointer;white-space:nowrap}
+.btn.primary{background:var(--brand);color:#fff}.btn:hover{filter:brightness(.95)}
+main{max-width:1400px;margin:0 auto;padding:20px}
+h1{font-size:22px;margin:4px 0 16px}h2{font-size:16px;margin:0 0 12px}
+.card{background:var(--card);border-radius:12px;box-shadow:var(--shadow);padding:16px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px}
+.kpi{cursor:pointer;border-left:4px solid var(--brand)}.kpi .v{font-size:30px;font-weight:700}.kpi .l{color:var(--muted)}
+.kpi.crit{border-color:var(--crit)}.kpi.high{border-color:var(--high)}.kpi.med{border-color:var(--med)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+@media (max-width:900px){.grid2{grid-template-columns:1fr}header{gap:8px;padding:0 12px}.logo span{display:none}main{padding:16px}}
+.bar{display:grid;grid-template-columns:minmax(120px,40%) 1fr 48px;gap:10px;align-items:center;margin:7px 0;cursor:pointer}
+.bar .track{background:var(--line);border-radius:6px;height:14px;overflow:hidden}.bar .fill{background:var(--brand);height:100%;border-radius:6px}
+.bar .n{font-weight:700;text-align:right}.bar:hover .lbl{color:var(--brand)}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+input[type=search],select,textarea{background:var(--card);color:var(--text);border:1px solid var(--line);border-bottom-color:var(--muted);border-radius:6px;padding:7px 10px;font:inherit}
+input[type=search]{min-width:240px;flex:1;max-width:380px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:0;background:var(--card);color:var(--brand);font:inherit;font-weight:600;padding:6px 10px;cursor:pointer}
+.seg button.on{background:var(--brand-weak);box-shadow:inset 0 0 0 1px var(--brand)}
+.muted{color:var(--muted)}
+.tablewrap{overflow-x:auto;border-radius:8px}
+table{width:100%;border-collapse:collapse;min-width:900px}
+th{text-align:left;font-weight:600;color:var(--muted);padding:10px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap;user-select:none}
+th.sorted{color:var(--brand)}
+td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+tr.flag td:first-child{box-shadow:inset 4px 0 var(--crit)}
+tr:hover td{background:var(--brand-weak)}
+.date{white-space:nowrap;font-variant-numeric:tabular-nums}
+.pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600;white-space:nowrap}
+.r-critical{color:var(--crit);background:var(--crit-bg)}.r-high{color:var(--high);background:var(--high-bg)}.r-medium{color:var(--med);background:var(--med-bg)}.r-low{color:var(--low);background:var(--low-bg)}.r-unknown{color:var(--unk);background:var(--unk-bg)}
+a{color:var(--brand)}
+.empty{text-align:center;padding:60px 20px}.empty svg{width:64px;height:64px;color:var(--brand)}
+.drop{border:2px dashed var(--line);border-radius:12px;padding:30px;margin:20px auto;max-width:560px}
+.drop.over{border-color:var(--brand);background:var(--brand-weak)}
+.add{position:relative}.sugg{position:absolute;z-index:4;background:var(--card);box-shadow:var(--shadow);border-radius:8px;max-height:280px;overflow:auto;width:100%;max-width:520px}
+.sugg div{padding:8px 12px;cursor:pointer}.sugg div:hover{background:var(--brand-weak)}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--brand-weak);border-radius:14px;padding:3px 10px;margin:3px}
+.chip button{border:0;background:none;color:var(--muted);cursor:pointer;font-size:16px;line-height:1}
+.hidden{display:none!important}
+.pager{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:10px}
+footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg><span>SAP Support Radar</span></div>
+  <nav id="nav">
+    <button data-view="dash" class="active">Dashboard</button>
+    <button data-view="all">All products</button>
+    <button data-view="mine">My landscape</button>
+  </nav>
+  <div class="spacer"></div>
+  <label class="btn primary">Upload PAM CSV<input id="file" type="file" accept=".csv,.json" hidden></label>
+</header>
+
+<main>
+  <section id="empty" class="empty">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg>
+    <h1>Which of your SAP products are running out of support?</h1>
+    <p class="muted">Export the SAP Product Availability Matrix (PAM) as CSV from the SAP Support Portal and drop it here.<br>The file is processed in your browser only. Nothing is uploaded to any server.</p>
+    <div class="drop" id="drop"><b>Drop extractPAM.csv here</b><br><span class="muted">or use “Upload PAM CSV” at the top</span></div>
+  </section>
+
+  <section id="dash" class="hidden">
+    <h1>Support overview <span class="muted" id="asof" style="font-size:14px;font-weight:400"></span></h1>
+    <div class="kpis" id="kpis"></div>
+    <div class="grid2">
+      <div class="card"><h2>Distribution by status</h2><div id="byStatus"></div></div>
+      <div class="card"><h2>End of mainstream maintenance per year</h2><div id="byYear"></div></div>
+    </div>
+    <div class="card"><h2>By product category</h2><div id="byCat"></div></div>
+  </section>
+
+  <section id="all" class="hidden">
+    <div class="toolbar">
+      <input type="search" id="q" placeholder="Search product data (e.g. NetWeaver 7.5, BO 4.3)">
+      <select id="fStatus"><option value="">All statuses</option></select>
+      <select id="fCat"><option value="">All categories</option></select>
+      <span class="spacer"></span>
+      <span class="muted">Mark support ending within</span>
+      <div class="seg" id="win"></div>
+    </div>
+    <div class="card"><div class="muted" id="count" style="margin-bottom:8px"></div><div class="tablewrap"><table id="tbl"></table></div>
+      <div class="pager"><button class="btn" id="prev">‹ Prev</button><span id="page" class="muted"></span><button class="btn" id="next">Next ›</button></div></div>
+  </section>
+
+  <section id="mine" class="hidden">
+    <h1>My landscape <span class="muted" id="mineCount" style="font-size:14px;font-weight:400"></span></h1>
+    <div class="grid2">
+      <div class="card add"><h2>Add a product</h2>
+        <input type="search" id="addQ" placeholder="Type a product, e.g. SolMan 7.2" style="width:100%;max-width:520px">
+        <div class="sugg" id="sugg"></div>
+        <div id="chips" style="margin-top:10px"></div></div>
+      <div class="card"><h2>Or paste a system list</h2>
+        <textarea id="paste" rows="4" style="width:100%" placeholder="One system per line, e.g.&#10;ECC 6.0 EHP8&#10;SAP NetWeaver 7.4&#10;BW/4HANA 2021"></textarea>
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" id="match">Match against PAM</button><button class="btn" id="demo">Load demo landscape</button><button class="btn" id="clear">Clear</button></div></div>
+    </div>
+    <div class="kpis" id="mineKpis"></div>
+    <div class="card"><div class="tablewrap"><table id="mineTbl"></table></div></div>
+  </section>
+</main>
+<footer>Data: your own export of the SAP Product Availability Matrix. Always check the SAP Support Portal for the latest information. Not affiliated with SAP.</footer>
+
+<script>
+const $ = s => document.querySelector(s);
+const store = { get(k){ try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } }, set(k,v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
+const TODAY = new Date().toISOString().slice(0,10);
+let DATA = null, mine = store.get("pam-mine") || [], win = store.get("pam-win") ?? 6, sortKey = "eomm", sortAsc = true, page = 0;
+const PAGE = 100;
+
+// ---------- CSV parsing (same logic as scripts/convert.js) ----------
+const COLS = {"Product Version":"pv","Official Name":"name","Product":"product","Product Line":"line","Product Category":"cat","Add-On Product Version":"addon","Current Status":"status","Unrestricted available":"ua","End of mainstream maintenance":"eomm","End of extended maintenance":"eoem","URL to Product Version in SAP Support Portal":"url"};
+function parseLine(line){const f=[];let c="",q=false;for(let i=0;i<line.length;i++){const ch=line[i];if(q){if(ch=='"'&&line[i+1]=='"'){c+='"';i++}else if(ch=='"')q=false;else c+=ch}else if(ch=='"')q=true;else if(ch==';'){f.push(c);c=""}else c+=ch}f.push(c);return f}
+const iso = v => { const m=/^(\d{2})\.(\d{2})\.(\d{4})$/.exec(v||""); return m?`${m[3]}-${m[2]}-${m[1]}`:null; };
+function parseCsv(text){
+  const lines=text.replace(/^﻿/,"").split(/\r?\n/).filter(l=>l.trim());
+  const head=parseLine(lines[0]).map(h=>{const k=Object.keys(COLS).find(c=>h===c||(c.startsWith("URL")&&h.startsWith(c)));return k?COLS[k]:null});
+  if(!head.includes("pv")||!head.includes("eomm")) throw new Error("This does not look like a PAM export (missing columns).");
+  return lines.slice(1).map(l=>{const v=parseLine(l),r={};head.forEach((h,i)=>{if(h)r[h]=(v[i]||"").trim()});
+    return {pv:r.pv,name:r.name||r.pv,product:r.product,line:r.line,cat:r.cat||"(none)",addon:r.addon==="Yes",status:r.status.replace(/\s+/g," "),ua:iso(r.ua),uaNote:iso(r.ua)?null:r.ua||null,eomm:iso(r.eomm),eoem:iso(r.eoem),url:r.url}});
+}
+
+// ---------- risk + matching ----------
+const addMonths=(d,m)=>{const x=new Date(d+"T00:00:00Z");x.setUTCMonth(x.getUTCMonth()+m);return x.toISOString().slice(0,10)};
+const months=(a,b)=>Math.round((new Date(b)-new Date(a))/2629800000);
+function risk(p,w=12){
+  if(p.status==="Out of maintenance") return ["critical","Out of maintenance"];
+  if(!p.eomm) return ["unknown","No end date published"];
+  if(p.eomm<TODAY) return ["high", p.eoem&&p.eoem>=TODAY?`Extended maintenance until ${fmt(p.eoem)}`:`Mainstream ended ${fmt(p.eomm)}`];
+  if(p.eomm<=addMonths(TODAY,w)) return ["medium",`Ends in ${months(TODAY,p.eomm)} months`];
+  return ["low",`${months(TODAY,p.eomm)} months left`];
+}
+const norm=s=>(s||"").toUpperCase().replace(/[^A-Z0-9.]+/g," ").trim(), compact=s=>norm(s).replace(/[ .]/g,""), toks=s=>norm(s).split(" ").filter(Boolean);
+const ALIAS=[[/\bECC\b/g,"ERP"],[/\bNW\b/g,"NETWEAVER"],[/\bSOLMAN\b/g,"SOLUTION MANAGER"],[/\bBOBJ\b|\bBO\b/g,"SBOP BI PLATFORM"],[/\bS4\b/g,"S/4HANA"]];
+const expand=q=>ALIAS.reduce((o,[re,r])=>o.replace(re,r),norm(q));
+function score(q,p){const c=compact(q);if(compact(p.pv)===c||compact(p.name)===c)return 100;const qt=toks(q);if(!qt.length)return 0;
+  const t=toks(p.pv+" "+p.name+" "+p.product);let s=qt.filter(x=>t.includes(x)).length/qt.length*80;
+  if(compact(p.pv).includes(c)||compact(p.name).includes(c))s=Math.max(s,70);
+  const pt=toks(p.pv).filter(x=>x!=="SAP");s+=pt.length?pt.filter(x=>qt.includes(x)).length/pt.length*19:0;return Math.min(99,Math.round(s))}
+function best(q,n=8){const e=expand(q);return DATA.map(p=>({p,s:Math.max(score(q,p),Math.min(99,score(e,p)))})).filter(x=>x.s>=50).sort((a,b)=>b.s-a.s).slice(0,n)}
+
+// ---------- rendering helpers ----------
+const fmt=d=>d?d.split("-").reverse().join("."):"";
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const pill=p=>{const [r,t]=risk(p,win||12);return `<span class="pill r-${r}" title="${esc(t)}">${r}</span>`};
+function bars(el,counts,onClick){const max=Math.max(...counts.map(c=>c[1]));
+  el.innerHTML=counts.map(([k,n])=>`<div class="bar" data-k="${esc(k)}"><span class="lbl">${esc(k)}</span><div class="track"><div class="fill" style="width:${n/max*100}%"></div></div><span class="n">${n}</span></div>`).join("");
+  if(onClick) el.querySelectorAll(".bar").forEach(b=>b.onclick=()=>onClick(b.dataset.k));}
+const countBy=(arr,f)=>Object.entries(arr.reduce((a,x)=>(a[f(x)]=(a[f(x)]||0)+1,a),{})).sort((a,b)=>b[1]-a[1]);
+
+function show(view){document.querySelectorAll("main>section").forEach(s=>s.classList.add("hidden"));
+  if(!DATA){$("#empty").classList.remove("hidden");return}
+  $("#"+view).classList.remove("hidden");document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
+  ({dash:renderDash,all:renderAll,mine:renderMine})[view]();store.set("pam-view",view)}
+
+function renderDash(){
+  $("#asof").textContent=`· ${DATA.length} product versions · today ${fmt(TODAY)}`;
+  const within=m=>DATA.filter(p=>p.eomm&&p.eomm>=TODAY&&p.eomm<=addMonths(TODAY,m)).length;
+  const k=[["",DATA.length,"product versions in PAM",()=>go("","",0)],["crit",DATA.filter(p=>p.status==="Out of maintenance").length,"out of maintenance",()=>go("Out of maintenance","",0)],
+    ["high",within(3),"mainstream ends ≤ 3 months",()=>go("","",3)],["high",within(6),"mainstream ends ≤ 6 months",()=>go("","",6)],["med",within(24),"mainstream ends ≤ 2 years",()=>go("","",24)]];
+  $("#kpis").innerHTML=k.map(([c,v,l],i)=>`<div class="card kpi ${c}" data-i="${i}"><div class="v">${v.toLocaleString()}</div><div class="l">${l}</div></div>`).join("");
+  $("#kpis").querySelectorAll(".kpi").forEach(e=>e.onclick=k[e.dataset.i][3]);
+  bars($("#byStatus"),countBy(DATA,p=>p.status),s=>go(s,"",win));
+  const yrs=countBy(DATA.filter(p=>p.eomm&&p.eomm>=TODAY.slice(0,4)),p=>p.eomm.slice(0,4)).sort((a,b)=>a[0].localeCompare(b[0])).slice(0,10);
+  bars($("#byYear"),yrs);
+  bars($("#byCat"),countBy(DATA,p=>p.cat),c=>go("",c,win));
+}
+function go(status,cat,w){$("#fStatus").value=status;$("#fCat").value=cat;win=w;$("#q").value="";page=0;show("all")}
+
+const COLS_ALL=[["pv","Product version"],["name","Official name"],["line","Product line"],["cat","Category"],["status","Current status"],["ua","Unrestricted avail."],["eomm","End of mainstream"],["eoem","End of extended"],["risk","Risk"],["url",""]];
+function renderAll(){
+  const wins=[[0,"Off"],[3,"3 months"],[6,"6 months"],[12,"12 months"],[24,"2 years"],[36,"3 years"]];
+  $("#win").innerHTML=wins.map(([m,l])=>`<button data-m="${m}" class="${m===win?"on":""}">${l}</button>`).join("");
+  $("#win").querySelectorAll("button").forEach(b=>b.onclick=()=>{win=+b.dataset.m;store.set("pam-win",win);page=0;renderAll()});
+  const q=$("#q").value.trim(),st=$("#fStatus").value,cat=$("#fCat").value,lim=win?addMonths(TODAY,win):null;
+  let rows=DATA.filter(p=>(!st||p.status===st)&&(!cat||p.cat===cat));
+  if(q){const ids=new Set(best(q,500).map(x=>x.p));const plain=norm(q);rows=rows.filter(p=>ids.has(p)||norm(p.pv+" "+p.name+" "+p.line).includes(plain))}
+  if(win) rows=rows.filter(p=>p.eomm&&p.eomm>=TODAY&&p.eomm<=lim).concat([]);
+  const rk={critical:0,high:1,medium:2,unknown:3,low:4};
+  rows.sort((a,b)=>{const va=sortKey==="risk"?rk[risk(a)[0]]:a[sortKey]||"￿",vb=sortKey==="risk"?rk[risk(b)[0]]:b[sortKey]||"￿";return (va<vb?-1:va>vb?1:0)*(sortAsc?1:-1)});
+  $("#count").textContent=`${rows.length.toLocaleString()} product versions`+(win?` with mainstream maintenance ending by ${fmt(lim)}`:"");
+  const pages=Math.max(1,Math.ceil(rows.length/PAGE));page=Math.min(page,pages-1);
+  $("#tbl").innerHTML=`<thead><tr>${COLS_ALL.map(([k,l])=>`<th data-k="${k}" class="${k===sortKey?"sorted":""}">${l}${k===sortKey?(sortAsc?" ▲":" ▼"):""}</th>`).join("")}</tr></thead><tbody>`+
+    rows.slice(page*PAGE,(page+1)*PAGE).map(p=>{const r=risk(p)[0];return `<tr class="${r==="critical"||r==="high"?"flag":""}"><td><b>${esc(p.pv)}</b></td><td>${esc(p.name)}</td><td>${esc(p.line)}</td><td>${esc(p.cat)}</td><td>${esc(p.status)}</td><td class="date">${p.ua?fmt(p.ua):esc(p.uaNote||"")}</td><td class="date">${fmt(p.eomm)}</td><td class="date">${fmt(p.eoem)}</td><td>${pill(p)}</td><td>${p.url?`<a href="${esc(p.url)}" target="_blank" rel="noopener">Portal ↗</a>`:""}</td></tr>`}).join("")+"</tbody>";
+  $("#tbl").querySelectorAll("th[data-k]").forEach(th=>th.onclick=()=>{const k=th.dataset.k;if(k==="url")return;sortAsc=k===sortKey?!sortAsc:true;sortKey=k;renderAll()});
+  $("#page").textContent=`Page ${page+1} / ${pages}`;$("#prev").disabled=page===0;$("#next").disabled=page>=pages-1;
+}
+
+function renderMine(){
+  const items=mine.map(pv=>DATA.find(p=>p.pv===pv)).filter(Boolean);
+  $("#mineCount").textContent=`· ${items.length} products`;
+  $("#chips").innerHTML=items.map(p=>`<span class="chip">${esc(p.pv)}<button data-pv="${esc(p.pv)}" title="Remove">×</button></span>`).join("");
+  $("#chips").querySelectorAll("button").forEach(b=>b.onclick=()=>{mine=mine.filter(x=>x!==b.dataset.pv);store.set("pam-mine",mine);renderMine()});
+  const rk={critical:0,high:1,medium:2,unknown:3,low:4};
+  items.sort((a,b)=>rk[risk(a)[0]]-rk[risk(b)[0]]||(a.eomm||"z").localeCompare(b.eomm||"z"));
+  const c=countBy(items,p=>risk(p)[0]),get=k=>(c.find(x=>x[0]===k)||[,0])[1];
+  $("#mineKpis").innerHTML=items.length?[["crit","critical","out of maintenance"],["high","high","mainstream ended"],["med","medium","ends within 12 months"],["","low","supported > 12 months"]].map(([cl,k,l])=>`<div class="card kpi ${cl}"><div class="v">${get(k)}</div><div class="l">${l}</div></div>`).join(""):"";
+  $("#mineTbl").innerHTML=items.length?`<thead><tr><th>Risk</th><th>Product version</th><th>Status</th><th>End of mainstream</th><th>End of extended</th><th>What it means</th><th></th></tr></thead><tbody>`+
+    items.map(p=>{const [r,t]=risk(p);return `<tr class="${r==="critical"||r==="high"?"flag":""}"><td><span class="pill r-${r}">${r}</span></td><td><b>${esc(p.pv)}</b><br><span class="muted">${esc(p.name)}</span></td><td>${esc(p.status)}</td><td class="date">${fmt(p.eomm)}</td><td class="date">${fmt(p.eoem)}</td><td>${esc(t)}</td><td>${p.url?`<a href="${esc(p.url)}" target="_blank" rel="noopener">Portal ↗</a>`:""}</td></tr>`}).join("")+"</tbody>"
+    :`<tbody><tr><td class="muted" style="text-align:center;padding:30px">No products yet. Search above, paste a list, or load the demo landscape.</td></tr></tbody>`;
+}
+function addMine(pv){if(!mine.includes(pv)){mine.push(pv);store.set("pam-mine",mine)}}
+
+// ---------- wiring ----------
+function load(list){DATA=list;store.set("pam-data",list);
+  $("#fStatus").innerHTML=`<option value="">All statuses</option>`+countBy(DATA,p=>p.status).map(([s])=>`<option>${esc(s)}</option>`).join("");
+  $("#fCat").innerHTML=`<option value="">All categories</option>`+countBy(DATA,p=>p.cat).map(([s])=>`<option>${esc(s)}</option>`).join("");
+  show(store.get("pam-view")||"dash")}
+async function readFile(f){try{const t=await f.text();load(f.name.endsWith(".json")?JSON.parse(t):parseCsv(t))}catch(e){alert("Could not read the file: "+e.message)}}
+$("#file").onchange=e=>e.target.files[0]&&readFile(e.target.files[0]);
+const drop=$("#drop");["dragover","dragenter"].forEach(ev=>document.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("over")}));
+document.addEventListener("dragleave",()=>drop.classList.remove("over"));
+document.addEventListener("drop",e=>{e.preventDefault();drop.classList.remove("over");e.dataTransfer.files[0]&&readFile(e.dataTransfer.files[0])});
+$("#nav").onclick=e=>e.target.dataset.view&&show(e.target.dataset.view);
+let t;$("#q").oninput=()=>{clearTimeout(t);t=setTimeout(()=>{page=0;renderAll()},200)};
+$("#fStatus").onchange=$("#fCat").onchange=()=>{page=0;renderAll()};
+$("#prev").onclick=()=>{page--;renderAll()};$("#next").onclick=()=>{page++;renderAll()};
+$("#addQ").oninput=()=>{const q=$("#addQ").value.trim();$("#sugg").innerHTML=q.length<2?"":best(q).map(x=>`<div data-pv="${esc(x.p.pv)}"><b>${esc(x.p.pv)}</b> <span class="muted">${esc(x.p.name)}</span></div>`).join("");
+  $("#sugg").querySelectorAll("div").forEach(d=>d.onclick=()=>{addMine(d.dataset.pv);$("#addQ").value="";$("#sugg").innerHTML="";renderMine()})};
+$("#match").onclick=()=>{const miss=[];$("#paste").value.split(/\n|;|,/).map(s=>s.trim()).filter(Boolean).forEach(s=>{const b=best(s,1)[0];b?addMine(b.p.pv):miss.push(s)});
+  $("#paste").value=miss.join("\n");if(miss.length)alert("Not found in PAM (left in the box): "+miss.join(", "));renderMine()};
+$("#demo").onclick=()=>{$("#paste").value="ECC 6.0 EHP8\nSAP NetWeaver 7.4\nBW/4HANA 2021\nSolMan 7.2\nBO 4.3\nS/4HANA 2023\nSAP HANA Platform Edition 2.0";$("#match").click()};
+$("#clear").onclick=()=>{mine=[];store.set("pam-mine",mine);renderMine()};
+const saved=store.get("pam-data");if(saved&&saved.length)load(saved);else show("dash");
+</script>
+</body>
+</html>
