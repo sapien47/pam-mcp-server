@@ -106,6 +106,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
       <span class="spacer"></span>
       <span class="muted">Mark support ending within</span>
       <div class="seg" id="win"></div>
+      <span id="yearChip"></span>
     </div>
     <div class="card"><div class="muted" id="count" style="margin-bottom:8px"></div><div class="tablewrap"><table id="tbl"></table></div>
       <div class="pager"><button class="btn" id="prev">‹ Prev</button><span id="page" class="muted"></span><button class="btn" id="next">Next ›</button></div></div>
@@ -152,7 +153,7 @@ const $ = s => document.querySelector(s);
 const store = { get(k){ try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } }, set(k,v){ try { if(v==null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
 const TODAY = new Date().toISOString().slice(0,10);
 // META / PREV_META: {file, date} of the current export and of the comparison baseline.
-let META = store.get("pam-meta"), PREV = store.get("pam-prev"), PREV_META = store.get("pam-prev-meta"), DIFF = null, chgFilter = "all";
+let META = store.get("pam-meta"), PREV = store.get("pam-prev"), PREV_META = store.get("pam-prev-meta"), DIFF = null, chgFilter = "all", yearF = null;
 let DATA = null, mine = (store.get("pam-mine") || []).map(x => typeof x === "string" ? { pv: x } : x), win = store.get("pam-win") ?? 6, sortKey = "eomm", sortAsc = true, page = 0;
 const PAGE = 100;
 
@@ -221,23 +222,26 @@ function renderDash(){
   $("#kpis").querySelectorAll(".kpi").forEach(e=>e.onclick=k[e.dataset.i][3]);
   bars($("#byStatus"),countBy(DATA,p=>p.status),s=>go(s,"",win));
   const yrs=countBy(DATA.filter(p=>p.eomm&&p.eomm>=TODAY.slice(0,4)),p=>p.eomm.slice(0,4)).sort((a,b)=>a[0].localeCompare(b[0])).slice(0,10);
-  bars($("#byYear"),yrs);
+  bars($("#byYear"),yrs,y=>{go("","",0);yearF=y;renderAll()});
   bars($("#byCat"),countBy(DATA,p=>p.cat),c=>go("",c,win));
 }
-function go(status,cat,w){$("#fStatus").value=status;$("#fCat").value=cat;win=w;$("#q").value="";page=0;show("all")}
+function go(status,cat,w){yearF=null;$("#fStatus").value=status;$("#fCat").value=cat;win=w;$("#q").value="";page=0;show("all")}
 
 const COLS_ALL=[["pv","Product version"],["name","Official name"],["line","Product line"],["cat","Category"],["status","Current status"],["ua","Unrestricted avail."],["eomm","End of mainstream"],["eoem","End of extended"],["risk","Risk"],["url",""]];
 function renderAll(){
   const wins=[[0,"Off"],[3,"3 months"],[6,"6 months"],[12,"12 months"],[24,"2 years"],[36,"3 years"]];
   $("#win").innerHTML=wins.map(([m,l])=>`<button data-m="${m}" class="${m===win?"on":""}">${l}</button>`).join("");
-  $("#win").querySelectorAll("button").forEach(b=>b.onclick=()=>{win=+b.dataset.m;store.set("pam-win",win);page=0;renderAll()});
+  $("#win").querySelectorAll("button").forEach(b=>b.onclick=()=>{win=+b.dataset.m;yearF=null;store.set("pam-win",win);page=0;renderAll()});
   const q=$("#q").value.trim(),st=$("#fStatus").value,cat=$("#fCat").value,lim=win?addMonths(TODAY,win):null;
   let rows=DATA.filter(p=>(!st||p.status===st)&&(!cat||p.cat===cat));
   if(q){const ids=new Set(best(q,500,50).map(x=>x.p));const plain=norm(q);rows=rows.filter(p=>ids.has(p)||norm(p.pv+" "+p.name+" "+p.line).includes(plain))}
   if(win) rows=rows.filter(p=>p.eomm&&p.eomm>=TODAY&&p.eomm<=lim).concat([]);
+  if(yearF) rows=rows.filter(p=>p.eomm&&p.eomm.startsWith(yearF));
   const rk={critical:0,high:1,medium:2,unknown:3,low:4};
   rows.sort((a,b)=>{const va=sortKey==="risk"?rk[risk(a)[0]]:a[sortKey]||"￿",vb=sortKey==="risk"?rk[risk(b)[0]]:b[sortKey]||"￿";return (va<vb?-1:va>vb?1:0)*(sortAsc?1:-1)});
-  $("#count").textContent=`${rows.length.toLocaleString()} product versions`+(win?` with mainstream maintenance ending by ${fmt(lim)}`:"");
+  $("#count").textContent=`${rows.length.toLocaleString()} product versions`+(win?` with mainstream maintenance ending by ${fmt(lim)}`:"")+(yearF?` with mainstream maintenance ending in ${yearF}`:"");
+  $("#yearChip").innerHTML=yearF?`<span class="chip">Mainstream ends in ${esc(yearF)}<button title="Remove year filter">×</button></span>`:"";
+  if(yearF)$("#yearChip button").onclick=()=>{yearF=null;page=0;renderAll()};
   const pages=Math.max(1,Math.ceil(rows.length/PAGE));page=Math.min(page,pages-1);
   $("#tbl").innerHTML=`<thead><tr>${COLS_ALL.map(([k,l])=>`<th data-k="${k}" class="${k===sortKey?"sorted":""}">${l}${k===sortKey?(sortAsc?" ▲":" ▼"):""}</th>`).join("")}</tr></thead><tbody>`+
     rows.slice(page*PAGE,(page+1)*PAGE).map(p=>{const r=risk(p)[0];return `<tr class="${r==="critical"||r==="high"?"flag":""}"><td><b>${esc(p.pv)}</b></td><td>${esc(p.name)}</td><td>${esc(p.line)}</td><td>${esc(p.cat)}</td><td>${esc(p.status)}</td><td class="date">${p.ua?fmt(p.ua):esc(p.uaNote||"")}</td><td class="date">${fmt(p.eomm)}</td><td class="date">${fmt(p.eoem)}</td><td>${pill(p)}</td><td>${p.url?`<a href="${esc(p.url)}" target="_blank" rel="noopener">Portal ↗</a>`:""}</td></tr>`}).join("")+"</tbody>";
