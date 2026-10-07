@@ -1,6 +1,10 @@
 // Converts the CSV export of the SAP Product Availability Matrix (PAM) into data/pam.json.
 //
 // Usage:  npm run convert -- "C:\path\to\extractPAM.csv"
+//         npm run convert -- "C:\path\to\older-export.csv" --as-previous
+//
+// Converting a newer export keeps the current data as data/pam-previous.json, so the
+// pam_changes tool can report what SAP changed between the two exports.
 //
 // The export is semicolon-separated, every field in double quotes, dates as DD.MM.YYYY.
 // The output file stays local (data/ is git-ignored): PAM data comes from behind an S-user login.
@@ -10,7 +14,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const outFile = path.join(projectRoot, "data", "pam.json");
+const currentFile = path.join(projectRoot, "data", "pam.json");
+const previousFile = path.join(projectRoot, "data", "pam-previous.json");
 
 // Maps CSV column headers to short JSON field names. The URL header is long, so it is matched by prefix.
 const COLUMNS = {
@@ -70,7 +75,7 @@ function parseDate(value) {
   return { date: null, note: value };
 }
 
-function convert(csvFile) {
+function convert(csvFile, asPrevious) {
   const text = fs.readFileSync(csvFile, "utf8").replace(/^\uFEFF/, "");
   const lines = text.split(/\r?\n/).filter((l) => l.trim() !== "");
   const header = parseLine(lines[0]);
@@ -123,7 +128,15 @@ function convert(csvFile) {
     count: products.length,
     products,
   };
+  const outFile = asPrevious ? previousFile : currentFile;
   fs.mkdirSync(path.dirname(outFile), { recursive: true });
+  if (!asPrevious && fs.existsSync(currentFile)) {
+    const existing = JSON.parse(fs.readFileSync(currentFile, "utf8"));
+    if (JSON.stringify(existing.products) !== JSON.stringify(products)) {
+      fs.renameSync(currentFile, previousFile);
+      console.log(`Kept the earlier export (${existing.source}, ${existing.exportDate}) as ${path.relative(projectRoot, previousFile)} for comparison`);
+    }
+  }
   fs.writeFileSync(outFile, JSON.stringify(output, null, 2));
 
   console.log(`Converted ${products.length} product versions -> ${path.relative(projectRoot, outFile)}`);
@@ -133,9 +146,10 @@ function convert(csvFile) {
   }
 }
 
-const csvFile = process.argv[2];
+const args = process.argv.slice(2);
+const csvFile = args.find((a) => !a.startsWith("--"));
 if (!csvFile) {
-  console.error('Usage: npm run convert -- "C:\\path\\to\\extractPAM.csv"');
+  console.error('Usage: npm run convert -- "C:\\path\\to\\extractPAM.csv" [--as-previous]');
   process.exit(1);
 }
-convert(csvFile);
+convert(csvFile, args.includes("--as-previous"));

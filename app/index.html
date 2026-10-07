@@ -69,6 +69,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
     <button data-view="dash" class="active">Dashboard</button>
     <button data-view="all">All products</button>
     <button data-view="mine">My landscape</button>
+    <button data-view="changes">What changed</button>
   </nav>
   <div class="spacer"></div>
   <label class="btn primary">Upload PAM CSV<input id="file" type="file" accept=".csv,.json" hidden></label>
@@ -78,7 +79,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
   <section id="empty" class="empty">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg>
     <h1>Which of your SAP products are running out of support?</h1>
-    <p class="muted">Export the SAP Product Availability Matrix (PAM) as CSV from the SAP Support Portal and drop it here.<br>The file is processed in your browser only. Nothing is uploaded to any server.</p>
+    <p class="muted">Export the SAP Product Availability Matrix (PAM) as CSV from the SAP Support Portal and drop it here.<br>See support risk for your landscape, the upgrade path for each system, and what SAP changed since your last export.<br>The file is processed in your browser only. Nothing is uploaded to any server.</p>
     <div class="drop" id="drop"><b>Drop extractPAM.csv here</b><br><span class="muted">or use “Upload PAM CSV” at the top</span></div>
   </section>
 
@@ -119,14 +120,34 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:20px}
     <div class="kpis" id="mineKpis"></div>
     <div class="card"><div class="tablewrap"><table id="mineTbl"></table></div></div>
   </section>
+
+  <section id="changes" class="hidden">
+    <h1>What changed in PAM <span class="muted" id="chgSub" style="font-size:14px;font-weight:400"></span></h1>
+    <div id="chgEmpty" class="card">
+      <h2>Compare two PAM exports</h2>
+      <p>SAP updates the Product Availability Matrix without notice: maintenance dates get extended or shortened, products move to customer-specific maintenance, new versions appear. Compare two exports to see exactly what moved.</p>
+      <p class="muted">Each time you upload a newer export, the current one is kept automatically as the comparison baseline. You can also load an older export yourself.</p>
+      <label class="btn primary">Load an older PAM export<input id="prevFile" type="file" accept=".csv,.json" hidden></label>
+    </div>
+    <div id="chgBody" class="hidden">
+      <div class="kpis" id="chgKpis"></div>
+      <div class="toolbar"><div class="seg" id="chgFilter"></div><span class="spacer"></span>
+        <label class="btn">Compare with another export<input id="prevFile2" type="file" accept=".csv,.json" hidden></label>
+        <button class="btn ghost" id="chgClear">Clear comparison</button></div>
+      <div class="card"><div class="tablewrap"><table id="chgTbl"></table></div></div>
+    </div>
+  </section>
 </main>
 <footer>Data: your own export of the SAP Product Availability Matrix. Always check the SAP Support Portal for the latest information. Not affiliated with SAP.</footer>
 
 <script src="matcher.js"></script>
+<script src="insights.js"></script>
 <script>
 const $ = s => document.querySelector(s);
-const store = { get(k){ try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } }, set(k,v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
+const store = { get(k){ try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } }, set(k,v){ try { if(v==null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
 const TODAY = new Date().toISOString().slice(0,10);
+// META / PREV_META: {file, date} of the current export and of the comparison baseline.
+let META = store.get("pam-meta"), PREV = store.get("pam-prev"), PREV_META = store.get("pam-prev-meta"), DIFF = null, chgFilter = "all";
 let DATA = null, mine = (store.get("pam-mine") || []).map(x => typeof x === "string" ? { pv: x } : x), win = store.get("pam-win") ?? 6, sortKey = "eomm", sortAsc = true, page = 0;
 const PAGE = 100;
 
@@ -167,13 +188,16 @@ const countBy=(arr,f)=>Object.entries(arr.reduce((a,x)=>(a[f(x)]=(a[f(x)]||0)+1,
 function show(view){document.querySelectorAll("main>section").forEach(s=>s.classList.add("hidden"));
   if(!DATA){$("#empty").classList.remove("hidden");return}
   $("#"+view).classList.remove("hidden");document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
-  ({dash:renderDash,all:renderAll,mine:renderMine})[view]();store.set("pam-view",view)}
+  ({dash:renderDash,all:renderAll,mine:renderMine,changes:renderChanges})[view]();store.set("pam-view",view)}
 
+const metaText=m=>m?`${m.file}${m.date?` (${fmt(m.date)})`:""}`:"uploaded export";
 function renderDash(){
-  $("#asof").textContent=`· ${DATA.length} product versions · today ${fmt(TODAY)}`;
+  $("#asof").textContent=`· ${metaText(META)} · ${DATA.length} product versions · today ${fmt(TODAY)}`;
   const within=m=>DATA.filter(p=>p.eomm&&p.eomm>=TODAY&&p.eomm<=addMonths(TODAY,m)).length;
   const k=[["",DATA.length,"product versions in PAM",()=>go("","",0)],["crit",DATA.filter(p=>p.status==="Out of maintenance").length,"out of maintenance",()=>go("Out of maintenance","",0)],
     ["high",within(3),"mainstream ends ≤ 3 months",()=>go("","",3)],["high",within(6),"mainstream ends ≤ 6 months",()=>go("","",6)],["med",within(24),"mainstream ends ≤ 2 years",()=>go("","",24)]];
+  const d=diff();
+  if(d) k.push([d.counts.needsAttention?"crit":"",d.counts.changed+d.counts.added+d.counts.removed,`changes since ${metaText(PREV_META)}`,()=>show("changes")]);
   $("#kpis").innerHTML=k.map(([c,v,l],i)=>`<div class="card kpi ${c}" data-i="${i}"><div class="v">${v.toLocaleString()}</div><div class="l">${l}</div></div>`).join("");
   $("#kpis").querySelectorAll(".kpi").forEach(e=>e.onclick=k[e.dataset.i][3]);
   bars($("#byStatus"),countBy(DATA,p=>p.status),s=>go(s,"",win));
@@ -211,19 +235,68 @@ function renderMine(){
   items.sort((a,b)=>rk[risk(a)[0]]-rk[risk(b)[0]]||(a.eomm||"z").localeCompare(b.eomm||"z"));
   const c=countBy(items,p=>risk(p)[0]),get=k=>(c.find(x=>x[0]===k)||[,0])[1];
   $("#mineKpis").innerHTML=items.length?[["crit","critical","out of maintenance"],["high","high","mainstream ended"],["med","medium","ends within 12 months"],["","low","supported > 12 months"]].map(([cl,k,l])=>`<div class="card kpi ${cl}"><div class="v">${get(k)}</div><div class="l">${l}</div></div>`).join(""):"";
-  $("#mineTbl").innerHTML=items.length?`<thead><tr><th>Risk</th><th>Product version</th><th>Status</th><th>End of mainstream</th><th>End of extended</th><th>What it means</th><th></th></tr></thead><tbody>`+
-    items.map(p=>{const [r,t]=risk(p);return `<tr class="${r==="critical"||r==="high"?"flag":""}"><td><span class="pill r-${r}">${r}</span></td><td><b>${esc(p.pv)}</b><br><span class="muted">${esc(p.name)}</span>${p.from&&p.from.toUpperCase()!==p.pv.toUpperCase()?`<br><span class="muted" style="font-size:12px">you typed: “${esc(p.from)}”</span>`:""}</td><td>${esc(p.status)}</td><td class="date">${fmt(p.eomm)}</td><td class="date">${fmt(p.eoem)}</td><td>${esc(t)}</td><td>${p.url?`<a href="${esc(p.url)}" target="_blank" rel="noopener">Portal ↗</a>`:""}</td></tr>`}).join("")+"</tbody>"
+  const d=diff(),changedPv=new Map((d?d.changed:[]).map(c=>[c.p.pv,c]));
+  $("#mineTbl").innerHTML=items.length?`<thead><tr><th>Risk</th><th>Product version</th><th>Status</th><th>End of mainstream</th><th>End of extended</th><th>What it means</th><th>Upgrade path</th><th></th></tr></thead><tbody>`+
+    items.map(p=>{const [r,t]=risk(p),c=changedPv.get(p.pv);return `<tr class="${r==="critical"||r==="high"?"flag":""}"><td><span class="pill r-${r}">${r}</span></td><td><b>${esc(p.pv)}</b><br><span class="muted">${esc(p.name)}</span>${p.from&&p.from.toUpperCase()!==p.pv.toUpperCase()?`<br><span class="muted" style="font-size:12px">you typed: “${esc(p.from)}”</span>`:""}${c?`<br><span class="pill ${c.attention?"r-critical":"r-unknown"}" title="${esc(c.changes.map(x=>`${x.label}: ${fmtv(x.before)} → ${fmtv(x.after)}`).join("\n"))}">changed since ${esc(fmt(PREV_META?.date)||"last export")}</span>`:""}</td><td>${esc(p.status)}</td><td class="date">${fmt(p.eomm)}</td><td class="date">${fmt(p.eoem)}</td><td>${esc(t)}</td><td>${upgradeHtml(p)}</td><td>${p.url?`<a href="${esc(p.url)}" target="_blank" rel="noopener">Portal ↗</a>`:""}</td></tr>`}).join("")+"</tbody>"
     :`<tbody><tr><td class="muted" style="text-align:center;padding:30px">No products yet. Search above, paste a list, or load the demo landscape.</td></tr></tbody>`;
 }
+// ---------- upgrade path ----------
+const until=x=>`mainstream to ${fmt(x.eomm)}${x.eoem?` · extended to ${fmt(x.eoem)}`:""}`;
+function upgradeHtml(p){
+  const o=PamInsights.upgradeOptions(p,DATA),out=[];
+  if(o.sameProduct) out.push(`→ <b>${esc(o.sameProduct.pv)}</b><br><span class="muted" style="font-size:12px">${until(o.sameProduct)}</span>`);
+  if(o.announced) out.push(`<span class="muted" style="font-size:12px">announced: ${esc(o.announced.pv)} (${until(o.announced)})</span>`);
+  if(o.strategic) out.push(`<span style="font-size:12px">strategic: <b>${esc(o.strategic.product?o.strategic.product.pv:o.strategic.text)}</b>${o.strategic.product?` <span class="muted">(${until(o.strategic.product)})</span>`:""}</span>`);
+  if(!out.length) out.push(`<span class="muted">Latest version listed in PAM</span>`);
+  return out.join("<br>");
+}
+
+// ---------- what changed ----------
+const fmtv=v=>v?(/^\d{4}-\d{2}-\d{2}$/.test(v)?fmt(v):v):"–";
+const KIND={extended:["supported longer","r-low"],shortened:["supported shorter","r-critical"],published:["date published","r-unknown"],removed:["date removed","r-high"],"status-worse":["status worse","r-high"],status:["status changed","r-unknown"],earlier:["available earlier","r-unknown"],later:["available later","r-unknown"],changed:["changed","r-unknown"]};
+function diff(){if(!PREV||!DATA)return null;DIFF??=PamInsights.compareExports(PREV,DATA);return DIFF}
+function renderChanges(){
+  const d=diff();
+  $("#chgEmpty").classList.toggle("hidden",!!d);$("#chgBody").classList.toggle("hidden",!d);
+  $("#chgSub").textContent=d?`· ${metaText(PREV_META)} → ${metaText(META)}`:"";
+  if(!d)return;
+  const myPv=new Set(mine.map(m=>m.pv)),mineHit=d.changed.filter(c=>myPv.has(c.p.pv)).length+d.added.filter(p=>myPv.has(p.pv)).length+d.removed.filter(p=>myPv.has(p.pv)).length;
+  const k=[["attention","crit",d.counts.needsAttention,"need attention (shorter support, worse status)"],["mine","high",mineHit,"affect my landscape"],["extended","",d.counts.extended,"supported longer"],["added","",d.counts.added,"newly listed"],["removed","med",d.counts.removed,"no longer listed"],["all","",d.counts.changed+d.counts.added+d.counts.removed,"changes in total"]];
+  $("#chgKpis").innerHTML=k.map(([f,c,v,l])=>`<div class="card kpi ${c}" data-f="${f}"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
+  $("#chgKpis").querySelectorAll(".kpi").forEach(e=>e.onclick=()=>{chgFilter=e.dataset.f;renderChanges()});
+  const F=[["all","All"],["attention","Needs attention"],["mine","My landscape"],["extended","Supported longer"],["added","Newly listed"],["removed","No longer listed"]];
+  $("#chgFilter").innerHTML=F.map(([f,l])=>`<button data-f="${f}" class="${f===chgFilter?"on":""}">${l}</button>`).join("");
+  $("#chgFilter").querySelectorAll("button").forEach(b=>b.onclick=()=>{chgFilter=b.dataset.f;renderChanges()});
+  const row=(p,pill,desc,attention)=>`<tr class="${attention?"flag":""}"><td><b>${esc(p.pv)}</b><br><span class="muted">${esc(p.name)}</span>${myPv.has(p.pv)?` <span class="chip" style="font-size:12px">in my landscape</span>`:""}</td><td>${pill}</td><td>${desc}</td><td>${esc(p.status)}</td><td>${p.url?`<a href="${esc(p.url)}" target="_blank" rel="noopener">Portal ↗</a>`:""}</td></tr>`;
+  const want=(pv,type,c)=>chgFilter==="all"||(chgFilter==="mine"&&myPv.has(pv))||(chgFilter==="attention"&&c&&c.attention)||(chgFilter===type)||(chgFilter==="extended"&&c&&c.changes.some(x=>x.kind==="extended"));
+  const rows=[
+    ...d.changed.filter(c=>want(c.p.pv,"changed",c)).sort((a,b)=>b.attention-a.attention).map(c=>row(c.p,c.changes.map(x=>`<span class="pill ${KIND[x.kind][1]}">${KIND[x.kind][0]}</span>`).join(" "),c.changes.map(x=>`${esc(x.label)}: <span class="date">${esc(fmtv(x.before))} → <b>${esc(fmtv(x.after))}</b></span>`).join("<br>"),c.attention)),
+    ...d.added.filter(p=>want(p.pv,"added")).map(p=>row(p,`<span class="pill r-low">new</span>`,`Newly listed${p.eomm?` · ${until(p)}`:""}`)),
+    ...d.removed.filter(p=>want(p.pv,"removed")).map(p=>row(p,`<span class="pill r-high">removed</span>`,"No longer listed in PAM",myPv.has(p.pv))),
+  ];
+  $("#chgTbl").innerHTML=`<thead><tr><th>Product version</th><th>Change</th><th>Before → after</th><th>Status now</th><th></th></tr></thead><tbody>`+(rows.join("")||`<tr><td colspan="5" class="muted" style="text-align:center;padding:30px">Nothing in this view.</td></tr>`)+"</tbody>";
+}
+function setPrev(list,meta){PREV=list;PREV_META=meta;DIFF=null;store.set("pam-prev",list);store.set("pam-prev-meta",meta)}
+
 function addMine(pv,from){if(!mine.some(m=>m.pv===pv)){mine.push({pv,from});store.set("pam-mine",mine)}}
 
 // ---------- wiring ----------
-function load(list){DATA=list;store.set("pam-data",list);
+// meta is set when the user uploads a file; the export it replaces becomes the comparison baseline.
+function load(list,meta){
+  if(meta){const old=store.get("pam-data")||(DATA&&JSON.parse(JSON.stringify(DATA,(k,v)=>k.startsWith("_")?undefined:v)));
+    if(old&&old.length&&JSON.stringify(old)!==JSON.stringify(list))setPrev(old,META);
+    META=meta;store.set("pam-meta",meta)}
+  DATA=list;DIFF=null;store.set("pam-data",list);
   $("#fStatus").innerHTML=`<option value="">All statuses</option>`+countBy(DATA,p=>p.status).map(([s])=>`<option>${esc(s)}</option>`).join("");
   $("#fCat").innerHTML=`<option value="">All categories</option>`+countBy(DATA,p=>p.cat).map(([s])=>`<option>${esc(s)}</option>`).join("");
   show(store.get("pam-view")||"dash")}
-async function readFile(f){try{const t=await f.text();load(f.name.endsWith(".json")?JSON.parse(t):parseCsv(t))}catch(e){alert("Could not read the file: "+e.message)}}
-$("#file").onchange=e=>e.target.files[0]&&readFile(e.target.files[0]);
+const fileMeta=f=>({file:f.name,date:new Date(f.lastModified||Date.now()).toISOString().slice(0,10)});
+async function parseFile(f){const t=await f.text();return f.name.endsWith(".json")?JSON.parse(t):parseCsv(t)}
+async function readFile(f){try{load(await parseFile(f),fileMeta(f))}catch(e){alert("Could not read the file: "+e.message)}}
+async function readPrev(f){try{if(!DATA)throw new Error("Upload the current PAM export first.");setPrev(await parseFile(f),fileMeta(f));show("changes")}catch(e){alert("Could not read the file: "+e.message)}}
+$("#file").onchange=e=>{e.target.files[0]&&readFile(e.target.files[0]);e.target.value=""};
+$("#prevFile").onchange=$("#prevFile2").onchange=e=>{e.target.files[0]&&readPrev(e.target.files[0]);e.target.value=""};
+$("#chgClear").onclick=()=>{setPrev(null,null);show("changes")};
 const drop=$("#drop");["dragover","dragenter"].forEach(ev=>document.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("over")}));
 document.addEventListener("dragleave",()=>drop.classList.remove("over"));
 document.addEventListener("drop",e=>{e.preventDefault();drop.classList.remove("over");e.dataTransfer.files[0]&&readFile(e.dataTransfer.files[0])});
@@ -239,7 +312,7 @@ $("#match").onclick=()=>{const miss=[];
 function renderUnmatched(miss){const el=$("#unmatched");
   el.innerHTML=miss.map((m,i)=>`<div class="miss" data-i="${i}"><b>“${esc(m.s)}”</b> – ${m.c.length?"did you mean: "+m.c.map(x=>`<button class="btn sm" data-pv="${esc(x.p.pv)}">${esc(x.p.pv)}</button>`).join(" "):"<span class=muted>no match in PAM. Try a product name and version, e.g. “ECC 6 EHP7”.</span>"} <button class="btn sm ghost" data-skip title="Dismiss">✕</button></div>`).join("");
   el.querySelectorAll(".miss").forEach(d=>{const m=miss[d.dataset.i];d.querySelectorAll("button[data-pv]").forEach(b=>b.onclick=()=>{addMine(b.dataset.pv,m.s);d.remove();renderMine()});d.querySelector("[data-skip]").onclick=()=>d.remove()})}
-$("#demo").onclick=()=>{$("#paste").value="ECC6 ehp8\nNW 7.40\nbw4hana 2021\nSolman 7.2\nBOBJ 4.3\nS4 2023\nHANA DB 2.0\nECC 7";$("#match").click()};
+$("#demo").onclick=()=>{$("#paste").value="ECC6 ehp8\nNW 7.40\nbw4hana 2021\nSolman 7.2\nBOBJ 4.3\nS4 2023\nHANA DB 2.0\nASE 16.0.4\nECC 7";$("#match").click()};
 $("#clear").onclick=()=>{mine=[];$("#unmatched").innerHTML="";store.set("pam-mine",mine);renderMine()};
 const saved=store.get("pam-data");if(saved&&saved.length)load(saved);else show("dash");
 </script>

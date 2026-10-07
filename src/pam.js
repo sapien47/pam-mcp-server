@@ -5,9 +5,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import "../app/matcher.js";
+import "../app/insights.js";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const DATA_FILE = process.env.PAM_DATA_FILE || path.join(projectRoot, "data", "pam.json");
+const PREVIOUS_FILE = process.env.PAM_PREVIOUS_FILE || path.join(path.dirname(DATA_FILE), "pam-previous.json");
 
 let cache = null;
 
@@ -100,13 +102,92 @@ function matchesFilters(p, { category, status }) {
   return true;
 }
 
-// Free-text matching lives in app/matcher.js, shared with the web app so both behave the same.
-// It expects {pv, name, product}; the index keeps a reference back to the full record.
+// Matching (app/matcher.js) and insights (app/insights.js) are shared with the web app and work on
+// light records {pv, name, product, line, status, ua, uaNote, eomm, eoem}; `ref` points back to the full record.
+function toLight(p) {
+  const uaNote = (p.notes || []).find((n) => n.startsWith("unrestrictedAvailable:"));
+  return {
+    pv: p.productVersion, name: p.officialName, product: p.product, line: p.productLine, status: p.status,
+    ua: p.unrestrictedAvailable, uaNote: uaNote ? uaNote.split(": ")[1] : null,
+    eomm: p.endOfMainstreamMaintenance, eoem: p.endOfExtendedMaintenance, ref: p,
+  };
+}
 let index = null;
+function lightIndex() {
+  index ??= loadData().products.map(toLight);
+  return index;
+}
 function rank(query, n = 8, min = 35) {
-  const { products } = loadData();
-  index ??= products.map((p) => ({ pv: p.productVersion, name: p.officialName, product: p.product, ref: p }));
-  return globalThis.PamMatcher.match(query, index, n, min).map((x) => ({ p: x.p.ref, s: x.p._c.includes(compact(query)) ? 100 : x.s }));
+  return globalThis.PamMatcher.match(query, lightIndex(), n, min).map((x) => ({ p: x.p.ref, s: x.p._c.includes(compact(query)) ? 100 : x.s }));
+}
+
+const brief = (l) => l && {
+  productVersion: l.pv,
+  status: l.status,
+  endOfMainstreamMaintenance: l.eomm,
+  endOfExtendedMaintenance: l.eoem || undefined,
+};
+
+// "What should we move to?" in plain fields, for one full product record.
+function upgradeFor(p) {
+  const all = lightIndex();
+  const o = globalThis.PamInsights.upgradeOptions(all.find((l) => l.ref === p), all);
+  const out = {};
+  if (o.sameProduct) out.recommended = { ...brief(o.sameProduct), why: "Newest released version of the same product with longer mainstream maintenance" };
+  if (o.announced) out.announced = { ...brief(o.announced), why: "Announced, not yet generally available" };
+  if (o.strategic?.product) out.strategicSuccessor = { ...brief(o.strategic.product), why: "SAP's strategic successor product (general direction, not a PAM link)" };
+  if (o.strategic?.text) out.strategicSuccessor = { name: o.strategic.text, why: "SAP's strategic successor (general direction, not in PAM)" };
+  if (o.latest) out.note = "No later version of this product is listed in PAM.";
+  return out;
+}
+
+export function upgradeOptions({ product }) {
+  const ranked = rank(product, 4);
+  const exact = loadData().products.find((x) => compact(x.productVersion) === compact(product));
+  const p = exact || (ranked[0] && ranked[0].s >= globalThis.PamMatcher.CONFIDENT && !(ranked[1] && ranked[1].s === ranked[0].s) ? ranked[0].p : null);
+  if (!p) return { found: false, didYouMean: ranked.map((x) => x.p.productVersion) };
+  return { found: true, current: { ...brief(toLight(p)), ...assess(p) }, upgradeOptions: upgradeFor(p) };
+}
+
+// ---------- comparing two exports ----------
+function loadPrevious() {
+  if (!fs.existsSync(PREVIOUS_FILE)) {
+    throw new Error(
+      "Only one PAM export is loaded, so there is nothing to compare yet. Convert a newer export later (the current one is kept automatically), " +
+      'or load an older one with: npm run convert -- "<older export.csv>" --as-previous'
+    );
+  }
+  return JSON.parse(fs.readFileSync(PREVIOUS_FILE, "utf8"));
+}
+
+export function changes({ systems, onlyNeedsAttention = false, limit = 100 } = {}) {
+  const current = loadData();
+  const previous = loadPrevious();
+  const diff = globalThis.PamInsights.compareExports(previous.products.map(toLight), lightIndex());
+
+  let focus = null;
+  if (systems?.length) {
+    focus = new Set(systems.map((s) => rank(s, 1)[0]).filter((x) => x && x.s >= globalThis.PamMatcher.CONFIDENT).map((x) => x.p.productVersion));
+  }
+  const keep = (pv) => !focus || focus.has(pv);
+  const changed = diff.changed
+    .filter((c) => keep(c.p.pv) && (!onlyNeedsAttention || c.attention))
+    .sort((a, b) => b.attention - a.attention)
+    .map((c) => ({
+      productVersion: c.p.pv,
+      needsAttention: c.attention,
+      changes: c.changes.map((x) => ({ field: x.label, before: x.before, after: x.after, kind: x.kind })),
+    }));
+  return {
+    previousExport: { file: previous.source, date: previous.exportDate },
+    currentExport: { file: current.source, date: current.exportDate },
+    counts: diff.counts,
+    focusedOn: focus ? [...focus] : undefined,
+    newlyListed: diff.added.filter((p) => keep(p.pv)).slice(0, limit).map(brief),
+    noLongerListed: diff.removed.filter((p) => keep(p.pv)).slice(0, limit).map(brief),
+    changed: changed.slice(0, limit),
+    truncated: changed.length > limit || undefined,
+  };
 }
 
 export function search({ query, category, status, limit = 20 }) {
@@ -122,7 +203,7 @@ export function search({ query, category, status, limit = 20 }) {
 export function getProduct(productVersion) {
   const { products } = loadData();
   const p = products.find((x) => compact(x.productVersion) === compact(productVersion));
-  if (p) return { found: true, product: { ...p, ...assess(p) } };
+  if (p) return { found: true, product: { ...p, ...assess(p) }, upgradeOptions: upgradeFor(p) };
   return { found: false, suggestions: search({ query: productVersion, limit: 5 }).results.map((r) => r.productVersion) };
 }
 
@@ -160,6 +241,7 @@ export function checkLandscape({ systems, warnMonths = 12 }) {
       match: best.s === 100 ? "exact" : "fuzzy",
       matchScore: best.s,
       ...toSummary(best.p, warnMonths),
+      upgradeOptions: upgradeFor(best.p),
       alternatives: best.s < 100 ? ranked.slice(1, 4).map((x) => x.p.productVersion) : undefined,
     };
   });

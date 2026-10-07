@@ -35,7 +35,31 @@ const check = await call("pam_check_landscape", {
 });
 console.log("\npam_check_landscape:", JSON.stringify(check.riskCounts));
 for (const r of check.systems) {
-  console.log(`  [${r.risk.padEnd(8)}] ${r.input.padEnd(18)} -> ${(r.productVersion || "-").padEnd(22)} (${r.match}) ${r.explanation}`);
+  const up = r.upgradeOptions?.recommended?.productVersion || r.upgradeOptions?.note || "";
+  console.log(`  [${r.risk.padEnd(8)}] ${r.input.padEnd(18)} -> ${(r.productVersion || "-").padEnd(22)} (${r.match}) ${r.explanation}${up ? `  => ${up}` : ""}`);
+}
+
+console.log("\npam_upgrade_options:");
+for (const product of ["NW 7.4", "BOBJ 4.3", "ECC6 ehp2", "Solman 7.2", "SAP ASE 16.0.4", "S4 2025"]) {
+  const u = await call("pam_upgrade_options", { product });
+  const o = u.upgradeOptions || {};
+  const fmt = (x) => (x ? `${x.productVersion || x.name}${x.endOfMainstreamMaintenance ? ` (mainstream to ${x.endOfMainstreamMaintenance})` : ""}` : "-");
+  console.log(`  ${product.padEnd(15)} -> recommended: ${fmt(o.recommended)} | announced: ${fmt(o.announced)} | strategic: ${fmt(o.strategicSuccessor)}${o.note ? " | " + o.note : ""}`);
+}
+
+const res = await client.callTool({ name: "pam_changes", arguments: {} });
+if (res.isError) {
+  console.log("\npam_changes:", res.content[0].text);
+} else {
+  const ch = JSON.parse(res.content[0].text);
+  console.log(`\npam_changes ${ch.previousExport.date} -> ${ch.currentExport.date}:`, JSON.stringify(ch.counts));
+  console.log("  newly listed:", ch.newlyListed.map((p) => p.productVersion).join(", "));
+  console.log("  no longer listed:", ch.noLongerListed.map((p) => p.productVersion).join(", "));
+  for (const c of ch.changed) {
+    console.log(`  ${c.needsAttention ? "!" : " "} ${c.productVersion}: ${c.changes.map((x) => `${x.field} ${x.before ?? "-"} -> ${x.after ?? "-"} [${x.kind}]`).join("; ")}`);
+  }
+  const mine = JSON.parse((await client.callTool({ name: "pam_changes", arguments: { systems: ["ECC6 ehp2", "ASE 16.0.4", "NW 7.4"] } })).content[0].text);
+  console.log("  focused on my systems:", mine.focusedOn.join(", "), "->", mine.changed.map((c) => c.productVersion).join(", "));
 }
 
 await client.close();

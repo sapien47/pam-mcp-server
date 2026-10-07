@@ -5,7 +5,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { search, getProduct, expiring, checkLandscape, summary } from "./pam.js";
+import { search, getProduct, expiring, checkLandscape, summary, upgradeOptions, changes } from "./pam.js";
 
 const server = new McpServer({ name: "pam-mcp-server", version: "0.1.0" });
 
@@ -83,13 +83,41 @@ server.registerTool(
   {
     title: "Check a system landscape",
     description:
-      "Check a list of SAP systems/components (free text, e.g. from a design document or system list) against PAM. Matches each to a product version and rates support risk: critical, high, medium, low or unknown. Fuzzy matches should be confirmed by a person.",
+      "Check a list of SAP systems/components (free text, e.g. from a design document or system list) against PAM. Matches each to a product version, rates support risk (critical, high, medium, low or unknown) and gives upgrade options (newer version of the same product, announced versions, SAP's strategic successor). Fuzzy matches should be confirmed by a person.",
     inputSchema: {
       systems: z.array(z.string()).min(1).max(200).describe("System or product names, e.g. ['ECC 6.0 EHP8', 'SAP NetWeaver 7.4', 'BW/4HANA 2021']"),
       warnMonths: z.number().int().min(1).max(60).optional().describe("Flag as medium risk if mainstream maintenance ends within this many months (default 12)"),
     },
   },
   respond(checkLandscape)
+);
+
+server.registerTool(
+  "pam_upgrade_options",
+  {
+    title: "Upgrade options for a product",
+    description:
+      "What to move to from a given SAP product version: the newest released version of the same product with longer mainstream maintenance, any announced (not yet available) version, and SAP's strategic successor product where one exists (e.g. SAP ERP -> SAP S/4HANA). Accepts shorthand like 'ECC6 ehp7' or 'BOBJ 4.3'.",
+    inputSchema: {
+      product: z.string().describe("Product version, e.g. 'SAP NETWEAVER 7.4' or 'BO 4.3'"),
+    },
+  },
+  respond(upgradeOptions)
+);
+
+server.registerTool(
+  "pam_changes",
+  {
+    title: "What changed between PAM exports",
+    description:
+      "Compare the current PAM export with the previous one: products newly listed or no longer listed, maintenance dates extended or shortened, status changes. Changes that need attention (shortened dates, removed dates, status now in customer-specific/extended/out of maintenance) come first. Optionally focus on a list of systems.",
+    inputSchema: {
+      systems: z.array(z.string()).max(200).optional().describe("Only report changes for these systems (free text, e.g. ['ECC6 ehp8', 'NW 7.5'])"),
+      onlyNeedsAttention: z.boolean().optional().describe("Only changes that need attention"),
+      limit: z.number().int().min(1).max(500).optional().describe("Max entries per list (default 100)"),
+    },
+  },
+  respond(changes)
 );
 
 await server.connect(new StdioServerTransport());
